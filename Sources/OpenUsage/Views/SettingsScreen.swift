@@ -311,12 +311,18 @@ struct PriorityIconsPreview: View {
     @Environment(WidgetDataStore.self) private var dataStore
 
     private static let height: CGFloat = 30
-    private static let scale: CGFloat = 0.8
-    private static let samples: [(kind: ProviderKind, badge: String?, label: String, value: String)] = [
-        (.claude, "P", "Weekly", "38%"), (.claude, "A1", "Session", "26%"), (.codex, nil, "Weekly", "31%"),
-        (.cursor, nil, "Extra", "$310"), (.antigravity, nil, "Gemini", "12%"), (.grok, nil, "Weekly", "9%"),
-        (.copilot, nil, "Credits", "7%"),
+    private static let scale: CGFloat = 0.65
+    private static let samples: [(kind: ProviderKind, badge: String?, label: String, value: String, reset: String?, meter: MenuBarContent.Meter?)] = [
+        (.claude, "P", "Weekly", "38%", "3d", meter(fill: 0.38, paceMark: 0.57)),
+        (.claude, "A1", "Session", "26%", "2h", meter(fill: 0.26, paceMark: 0.6)),
+        (.codex, nil, "Weekly", "31%", "4d", meter(fill: 0.31, paceMark: 0.43)),
+        (.cursor, nil, "Extra", "$310", nil, nil), (.antigravity, nil, "Gemini", "12%", "22m", nil),
+        (.grok, nil, "Weekly", "9%", "5d", meter(fill: 0.09, paceMark: 0.3)), (.copilot, nil, "Credits", "7%", nil, nil),
     ]
+
+    private static func meter(fill: Double, paceMark: Double) -> MenuBarContent.Meter {
+        MenuBarContent.Meter(fill: fill, paceMark: paceMark, paceSeverity: .normal)
+    }
 
     static func sample(limit: MenuBarLimit) -> MenuBarContent {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
@@ -326,7 +332,9 @@ struct PriorityIconsPreview: View {
                 provider: Provider(id: "sample.\(index)", kind: sample.kind, badge: sample.badge),
                 label: sample.label,
                 shortLabel: sample.label,
-                value: sample.value
+                value: sample.value,
+                reset: sample.reset,
+                meter: sample.meter
             )
         }
         return MenuBarContent(items: shown, overflow: samples.count - shown.count)

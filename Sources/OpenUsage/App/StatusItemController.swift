@@ -96,6 +96,9 @@ final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private var stripGate = StripGate()
     private var rankingTick: Task<Void, Never>?
+    /// Draws the current strip again from the data it was last drawn with.
+    private var redrawStrip: (() -> Void)?
+    private var appearanceObservation: NSKeyValueObservation?
     private let panel: MenuBarPanel
     private let heightController: PanelHeightController
     private lazy var outsideClickMonitor = PanelOutsideClickMonitor(
@@ -188,6 +191,14 @@ final class StatusItemController: NSObject {
         button.target = self
         button.action = #selector(statusButtonClicked)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        // A coloured strip is drawn for one appearance, so it is drawn again when the menu bar changes.
+        appearanceObservation = button.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor [weak self] in self?.redrawStrip?() }
+        }
+    }
+
+    private var isMenuBarDark: Bool {
+        statusItem.button?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
     /// Shows a strip only when its content changed: setting even an identical image costs a full
@@ -225,20 +236,27 @@ final class StatusItemController: NSObject {
     ) {
         let now = Date()
         let board = PriorityBoard.make(accounts: accounts, pinned: pinned, burningFast: burningFast, useItOrLoseIt: useItOrLoseIt, now: now)
-        var content = MenuBarContentBuilder.build(board: board, limit: limit, alwaysShows: alwaysShows)
+        var content = MenuBarContentBuilder.build(board: board, limit: limit, alwaysShows: alwaysShows, now: now)
         content.updateAvailable = updateAvailable
+        content.darkMenuBar = isMenuBarDark
         stripGate.show(content) { content in
             statusItem.button?.image = MenuBarStripRenderer.image(for: content)
                 ?? MenuBarStripRenderer.appIcon
         }
-        // The pace order can change between provider reads. A tick only reuses the current data;
-        // registering another observation here would multiply subscriptions on every tick.
-        guard board.requiresRankingClock(at: now) else { return }
+        // A redraw only reuses the current data; registering another observation here would multiply
+        // subscriptions on every tick.
+        redrawStrip = { [weak self] in
+            self?.rankingTick?.cancel()
+            self?.showStrip(accounts: accounts, pinned: pinned, burningFast: burningFast, useItOrLoseIt: useItOrLoseIt, limit: limit,
+                            alwaysShows: alwaysShows, updateAvailable: updateAvailable)
+        }
+        // The pace order can change between provider reads, and reset countdowns and pace bars move with the clock.
+        let showsClockReadings = content.items.contains { $0.reset != nil || $0.meter != nil }
+        guard board.requiresRankingClock(at: now) || showsClockReadings else { return }
         rankingTick = Task { [weak self] in
             try? await Task.sleep(for: .seconds(30), tolerance: .seconds(1))
             guard !Task.isCancelled else { return }
-            self?.showStrip(accounts: accounts, pinned: pinned, burningFast: burningFast, useItOrLoseIt: useItOrLoseIt, limit: limit,
-                            alwaysShows: alwaysShows, updateAvailable: updateAvailable)
+            self?.redrawStrip?()
         }
     }
 

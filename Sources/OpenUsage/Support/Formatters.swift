@@ -53,6 +53,17 @@ enum Formatters {
         return compactDuration(date.timeIntervalSince(now))
     }
 
+    /// The time left in its largest whole unit, like "22m", "2h" or "3d", for where only a glance fits.
+    static func coarseDuration(_ seconds: TimeInterval) -> String? {
+        guard seconds.isFinite, seconds > 0 else { return nil }
+        let minutesPerHour = 60
+        let minutesPerDay = 24 * minutesPerHour
+        let totalMinutes = max(1, ProviderParse.int((seconds / 60).rounded(.up)) ?? .max)
+        if totalMinutes < minutesPerHour { return "\(totalMinutes)m" }
+        if totalMinutes < minutesPerDay { return "\(totalMinutes / minutesPerHour)h" }
+        return "\(totalMinutes / minutesPerDay)d"
+    }
+
     static func compactDuration(_ seconds: TimeInterval) -> String? {
         guard seconds.isFinite, seconds > 0 else { return nil }
         let totalMinutes = max(1, ProviderParse.int((seconds / 60).rounded(.up)) ?? .max)

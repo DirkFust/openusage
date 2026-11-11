@@ -11,6 +11,13 @@ Priority lists.
   order: Pinned, Running Out, Use It or Lose It, then Used Up. A pinned limit shows once, where
   Priority lists it.
 - Each limit shows the provider's mark, a short name, and its value. An account can appear more than once.
+- Beside the value, a limit with a reset shows the time until it, in one unit: `22m`, `2h`, `3d`. Under
+  it, a small bar fills the way the limit's row does, with a tick where an even pace through the window
+  would be by now. The bar follows the same rules as the row's [pace mark](dashboard.md), so it hides
+  with **Pace Marks** off, once the limit is used up, or early in its window.
+- The value turns orange or red when what's left drops to the Warning or Critical level. The bar turns
+  orange when the limit would land close to its limit at the reset, and red when it would run out
+  before it. Everything else keeps the menu bar's own color.
 - Limits past that number show as a count, like `+7`. Used Up limits never count. With Always Show
   In Menu Bar off, only limits running out show or count.
 - With nothing to show, or with **App Icon Only**, the strip shows the app icon.

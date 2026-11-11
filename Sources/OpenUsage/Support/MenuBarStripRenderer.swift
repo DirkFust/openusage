@@ -13,7 +13,8 @@ enum MenuBarStripRenderer {
             cgImage: cgImage,
             size: NSSize(width: CGFloat(cgImage.width) / renderer.scale, height: CGFloat(cgImage.height) / renderer.scale)
         )
-        image.isTemplate = true
+        // A template image lets macOS tint the strip for the menu bar, but drops every colour in it.
+        image.isTemplate = !content.isColored
         image.accessibilityDescription = content.accessibilityText
         return image
     }
@@ -74,8 +75,40 @@ enum MenuBarStripRenderer {
     }
 }
 
+/// The strip's colours. A template strip is drawn in black for macOS to tint; a coloured one is drawn in the
+/// menu bar's own ink, with the severity colours resolved for its appearance.
+struct MenuBarPalette {
+    let ink: Color
+    private let showsSeverity: Bool
+    private let appearance: NSAppearance?
+
+    init(for content: MenuBarContent) {
+        showsSeverity = content.isColored
+        ink = showsSeverity && content.darkMenuBar ? .white : .black
+        appearance = NSAppearance(named: content.darkMenuBar ? .darkAqua : .aqua)
+    }
+
+    func value(_ severity: WidgetData.MeterSeverity) -> Color {
+        color(severity, Theme.severityTextColor(severity))
+    }
+
+    func meterFill(_ severity: WidgetData.MeterSeverity) -> Color {
+        color(severity, Theme.severityColor(severity))
+    }
+
+    private func color(_ severity: WidgetData.MeterSeverity, _ color: Color) -> Color {
+        guard showsSeverity, severity != .normal, let appearance else { return ink }
+        // System colours resolve against the current drawing appearance, which an offscreen render doesn't share.
+        var resolved = NSColor(color).cgColor
+        appearance.performAsCurrentDrawingAppearance { resolved = NSColor(color).cgColor }
+        return Color(cgColor: resolved)
+    }
+}
+
 struct MenuBarTextStrip: View {
     let content: MenuBarContent
+
+    private var palette: MenuBarPalette { MenuBarPalette(for: content) }
 
     var body: some View {
         HStack(spacing: 11) {
@@ -94,6 +127,9 @@ struct MenuBarTextStrip: View {
                         .padding(.trailing, item.provider.badge == nil ? 0 : AccountBadge.overhang.width)
                         .padding(.vertical, item.provider.badge == nil ? 0 : AccountBadge.overhang.height)
                     labelledValue(item)
+                    if item.reset != nil || item.meter != nil {
+                        resetAndPace(item)
+                    }
                 }
             }
             if content.overflow > 0 {
@@ -104,7 +140,7 @@ struct MenuBarTextStrip: View {
                     .renderingMode(.template)
             }
         }
-        .foregroundStyle(.black)
+        .foregroundStyle(palette.ink)
         .monospacedDigit()
         .padding(.horizontal, 2)
         .padding(.vertical, 1)
@@ -118,8 +154,48 @@ struct MenuBarTextStrip: View {
                 .font(.system(size: 9, weight: .medium))
             Text(item.value)
                 .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(palette.value(item.valueSeverity))
         }
         .fixedSize()
+    }
+
+    private func resetAndPace(_ item: MenuBarContent.Item) -> some View {
+        VStack(alignment: .leading, spacing: -2) {
+            Text(item.reset ?? "")
+                .font(.system(size: 9, weight: .medium))
+            Group {
+                if let meter = item.meter {
+                    paceBar(meter)
+                } else {
+                    Color.clear.frame(width: PaceBar.width, height: PaceBar.markHeight)
+                }
+            }
+            .frame(height: PaceBar.rowHeight)
+        }
+        .fixedSize()
+    }
+
+    private enum PaceBar {
+        static let width: CGFloat = 18
+        static let height: CGFloat = 3
+        static let markWidth: CGFloat = 1.5
+        static let markHeight: CGFloat = 7
+        static let rowHeight: CGFloat = 13
+        static let trackOpacity = 0.3
+    }
+
+    private func paceBar(_ meter: MenuBarContent.Meter) -> some View {
+        let clamp = { (share: Double) in CGFloat(min(max(share, 0), 1)) }
+        return ZStack(alignment: .leading) {
+            Capsule().fill(palette.ink.opacity(PaceBar.trackOpacity))
+                .frame(width: PaceBar.width, height: PaceBar.height)
+            Capsule().fill(palette.meterFill(meter.paceSeverity))
+                .frame(width: PaceBar.width * clamp(meter.fill), height: PaceBar.height)
+            Rectangle().fill(palette.ink)
+                .frame(width: PaceBar.markWidth, height: PaceBar.markHeight)
+                .offset(x: (PaceBar.width - PaceBar.markWidth) * clamp(meter.paceMark))
+        }
+        .frame(width: PaceBar.width, height: PaceBar.markHeight, alignment: .leading)
     }
 
     private func overflowCount(_ count: Int) -> some View {
@@ -127,7 +203,7 @@ struct MenuBarTextStrip: View {
             .font(.system(size: 11, weight: .bold))
             .padding(.horizontal, 5)
             .frame(height: 16)
-            .background(Capsule().fill(Color.black.opacity(0.16)))
+            .background(Capsule().fill(palette.ink.opacity(0.16)))
     }
 
     private static let glyphSide: CGFloat = 16
@@ -135,6 +211,6 @@ struct MenuBarTextStrip: View {
     private func glyph(_ icon: String) -> some View {
         Image(nsImage: ProviderMarks.image(for: icon, side: Self.glyphSide, inset: 0.04))
             .renderingMode(.template)
-            .foregroundStyle(Color.black)
+            .foregroundStyle(palette.ink)
     }
 }
